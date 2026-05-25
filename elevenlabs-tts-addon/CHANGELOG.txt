@@ -1,0 +1,443 @@
+ElevenLabs TTS — Change Log
+===========================
+
+Every entry follows this template so future-you (and anyone reviewing
+the add-on) can tell, without reading the diff, what moved and why:
+
+  Version - YYYY-MM-DD
+    What:    one-line summary of the change
+    Why:     the problem this solves / the user pain it removes
+    Purpose: what behaviour you get out of it that you didn't before
+    Files:   touched paths (optional)
+
+Newest entries go at the top.
+
+-----------------------------------------------------------------------
+
+1.5.3 - 2026-05-24 (Documentation pass)
+  What:    Added two reference documents under docs/:
+             docs/USER_GUIDE.md   — plain-language guide for end
+                                   users (install, setup, daily use,
+                                   translation gesture, common
+                                   problems, where to get help).
+             docs/TECHNICAL.md    — developer reference (architecture
+                                   diagram, file layout, synth driver
+                                   internals, cache mechanics,
+                                   translation flow, network layer,
+                                   config keys, build process,
+                                   debug log lines, how to add
+                                   features).
+  Why:     The repo had only readme.txt + CHANGELOG.txt before —
+           fine for the author but not enough for a new user picking
+           the add-on off the NVDA Add-on Store, and not enough for
+           a future maintainer who needs to find their way around
+           the codebase.
+  Purpose: End users get a single document that walks them from
+           "what is this" to "I have it working with my own API key
+           and shortcut bound to NVDA+Shift+T". Future developers
+           get a single document that explains every architectural
+           decision and points at the right file/function for any
+           feature.
+  Files:   docs/USER_GUIDE.md   (new)
+           docs/TECHNICAL.md    (new)
+           manifest.ini (version bump)
+
+1.5.2 - 2026-05-24
+  What:    Added Vignesh as a co-author. Updated the author field in
+           manifest.ini, the copyright line in LICENSE, and the
+           publisher field in STORE_SUBMISSION.md.
+  Why:     Credit second contributor.
+  Purpose: Both authors visible to end users in NVDA's Add-on
+           Manager and on the Add-on Store listing.
+  Files:   manifest.ini, LICENSE, STORE_SUBMISSION.md
+
+1.5.1 - 2026-05-24 (WebSocket reverted)
+  What:    Removed the WebSocket streaming code path and its settings-
+           panel checkbox. The synth driver now talks to ElevenLabs
+           exclusively over persistent HTTP (http.client.HTTPSConnection
+           from the stdlib — the same connection pool added in 1.1.0).
+           Deleted: _MiniWebSocket class, _stream_tts_ws function,
+           WebSocketError exception, the use_ws dispatch in
+           _streamAndPlay, the useWebSocket config key, the
+           "Use WebSocket streaming (experimental)" checkbox in the
+           settings panel, the WebSocket section of docs/en/readme.html,
+           and now-unused socket / struct / base64 imports.
+  Why:     Real-world report: on the user's network, 1.5.0 with the
+           checkbox ticked was SLOWER than 1.4.0 — not faster. The
+           theoretical first-byte-latency win didn't materialise once
+           you account for JSON+base64 overhead per chunk, an extra
+           handshake round-trip on every utterance, and the fact that
+           the persistent HTTP connection already kept TCP+TLS warm
+           between calls. On top of that, the "experimental" jargon
+           in a settings-panel checkbox was confusing non-developer
+           users — exactly the audience this add-on targets.
+  Purpose: Simpler UI (one fewer confusing toggle), simpler code
+           (~250 fewer lines), no regression for users who were on
+           1.5.0 with the box unticked (HTTP path is unchanged).
+           Performance equals 1.4.0 — which the user reported as the
+           fast baseline.
+  Files:   synthDrivers/elevenlabs.py     (block deletion + imports)
+           globalPlugins/elevenlabsTTS/settings.py
+           docs/en/readme.html
+           manifest.ini (version bump)
+
+  Deferred (last item from the original 16-item list):
+    #16  Per-app voice routing
+
+1.5.0 - 2026-05-24 (WebSocket streaming, opt-in)
+  What:    1) New code path: pure-Python RFC 6455 WebSocket client
+              (handshake + masked text frames + close-code parsing +
+              ping/pong). Lives in synthDrivers/elevenlabs.py as
+              _MiniWebSocket. About 150 lines, stdlib-only.
+           2) _stream_tts_ws(): yields audio chunks from
+              wss://api.elevenlabs.io/.../stream-input, base64-
+              decoding the audio field out of each JSON frame.
+           3) Settings panel: new checkbox "Use WebSocket streaming
+              (experimental)". Default OFF — opt-in. Persisted as
+              the `useWebSocket` config key.
+           4) Driver _streamAndPlay picks WS or HTTP based on the
+              checkbox. If WS fails for any reason — connection
+              refused, TLS error, server close, parse error — it
+              automatically falls back to HTTP for that single
+              request and logs a warning. The user still hears
+              speech; the next request retries WS.
+           5) WS path supports the same controls as HTTP: pitch,
+              volume, rate, voice, model, language_code override
+              for translation, output-format fallback to pcm_16000.
+              Cache key is unchanged so cached short utterances
+              still hit on either backend.
+  Why:     HTTP streaming opens a fresh request per utterance and
+              has a built-in ~500 ms first-byte latency. WebSocket
+              keeps a persistent connection and the server can start
+              sending audio as soon as the first phonemes are ready
+              — typically ~100 ms. For typed-letter feedback and
+              fast keyboard navigation, this is a real perceived
+              speed improvement.
+  Purpose: Faster speech onset for everyone who turns the checkbox
+              on. Bullet-proof: anything that goes wrong on the new
+              path silently falls back to the proven HTTP path.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+           docs/en/readme.html
+
+  Risks:   WebSocket is a single-connection long-lived stream; some
+              corporate firewalls block ws:/wss: traffic separately
+              from https. If the checkbox makes things worse on a
+              given network, untick it and HTTP behaves exactly as
+              it did in 1.4.x. No other surface area changes.
+
+  Deferred (last of the original 16-item list):
+    #16  Per-app voice routing
+
+1.4.0 - 2026-05-24 (Translate-and-speak gesture)
+  What:    1) REMOVED the "Language" picker (synth-level pronunciation
+              hint). It confused users — picking Tamil there did
+              nothing visible because NVDA's English UI text stayed
+              English. The defaultLanguage config key is gone.
+           2) ADDED a "Translation language" picker — Indian
+              languages only (Tamil default; Hindi, Telugu, Marathi,
+              Bengali, Kannada, Malayalam, Gujarati, Punjabi, Urdu).
+              No English target, no other non-Indian languages.
+           3) ADDED NVDA+Shift+T gesture:
+                * grabs the currently selected text (browse mode or
+                  any text field),
+                * translates it via Google's free public endpoint
+                  (translate.googleapis.com — no key needed),
+                * speaks the result via eleven_multilingual_v2 in the
+                  chosen language so Indian pronunciation works
+                  regardless of the saved Model setting.
+              The gesture is announced as "Translate the currently
+              selected text..." in NVDA's Input Gestures dialog under
+              the "ElevenLabs TTS" category, so users can rebind it
+              freely (Ctrl+Shift+Up, anything else).
+           4) Test API key reverted to always English. Test = key/
+              voice check; the translation gesture is the way to
+              verify Indian-language pronunciation.
+           5) Long selections (>4500 chars) are chunked at sentence
+              boundaries before translation so we don't trip Google's
+              soft length limit.
+           6) docs/en/readme.html: new "Translation (1.4.0+)" section
+              explaining the gesture, target-language list, and
+              expected behaviour when translation rate-limits.
+  Why:     User feedback: "I picked Tamil and clicked OK but nothing
+              happened." The Language picker only changed how
+              EXISTING Indian text would be pronounced; it did not
+              translate. Replacing it with a real translate-on-
+              gesture means the obvious user expectation ("turn this
+              English thing into Tamil") finally works.
+  Purpose: Read any text in any app -> NVDA+Shift+T -> hear it in
+              your chosen Indian language. No external apps, no
+              copy-paste, no extra API keys.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/__init__.py
+           globalPlugins/elevenlabsTTS/settings.py
+           docs/en/readme.html
+           manifest.ini (version bump)
+
+  Deferred (still pending from the original 16-item list):
+    #13  WebSocket streaming endpoint
+    #16  Per-app voice routing
+
+1.3.3 - 2026-05-23
+  What:    1) Test API key now speaks a phrase in the currently-
+              selected language. Picked Tamil? The dialog plays a
+              short Tamil greeting. Picked Hindi? Hindi greeting.
+              Phrases shipped for all 11 Indian languages.
+           2) When the picked language is non-English the test
+              automatically uses eleven_multilingual_v2, regardless
+              of the user's Model setting, because Flash/Turbo can't
+              pronounce non-English.
+           3) The success dialog shows the language label and the
+              exact phrase used, so the user gets unambiguous proof
+              that the language change took effect.
+           4) Re-worded the explanatory note above the Language
+              picker: language is a pronunciation hint for the
+              multilingual model, NOT a translator. NVDA reading
+              English UI still sounds English.
+  Why:     User reported: "I picked Tamil and clicked OK but nothing
+              happened." Correctly so — language only kicks in when
+              text in that language is read aloud, and NVDA's English
+              UI doesn't change. The test button used to always speak
+              an English phrase, so users had no way to verify the
+              language picker actually did anything.
+  Purpose: Pick Tamil -> click Test -> hear Tamil. Direct evidence
+              the setting works.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+
+1.3.2 - 2026-05-23
+  What:    1) Step 1 of the Test diagnostic no longer aborts the test.
+              If /v1/user/subscription returns 401/403 (typical of a
+              key scoped to TTS only) we now show "Step 1 SKIPPED
+              (key may be scoped to TTS, that's OK)" and run step 2
+              anyway. Step 2 (actually speaking) is the authoritative
+              answer to "does the key work?".
+           2) Added diagnose_subscription() — returns (ok, summary,
+              info) so callers see *why* the subscription endpoint
+              didn't respond, not just None.
+           3) Quota label in the settings panel now says
+              "Quota: not available (key scoped to TTS only - TTS
+              still works)" instead of the generic "unavailable
+              (check API key / network)" when the scoped-key case
+              applies.
+  Why:     Real-world report: user's scoped TTS-only API key worked
+              fine for actual speech but the test dialog said
+              "Step 1 (authenticate) failed", implying the key was
+              broken. The diagnostic was treating an informational
+              endpoint as a gate.
+  Purpose: Users with TTS-only scoped keys see a clear "everything is
+              fine, here's just what we couldn't check" result instead
+              of a false-negative failure.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+
+1.3.1 - 2026-05-23
+  What:    1) Test API key now runs a two-step diagnostic:
+              Step 1: GET /v1/user/subscription — works for ANY valid
+                      key on any tier. Tells you "Key OK — Tier free,
+                      234 / 10000 chars used."
+              Step 2: TTS the selected voice. Reports separately;
+                      a 402 / payment_required is now interpreted as
+                      "your key is fine but THIS VOICE needs a paid
+                      plan", not "test failed". The dialog includes
+                      the human server message.
+           2) On a 402 from step 2, the panel silently re-pulls
+              /v1/voices so the dropdown shows only the voices the
+              user can actually use.
+           3) On driver startup, if the saved default voice isn't in
+              the user's library at all, the driver auto-picks the
+              first voice from the live API result AND writes it back
+              to config.defaultVoice so a restart keeps the fix.
+  Why:     Free-tier users couldn't tell whether their API key was
+              wrong or just the voice ("Riya" etc.) was paid-only;
+              the dialog said "API error 402" with a JSON blob. The
+              key was always working, but the message implied
+              otherwise. Auto-picking a usable voice means a fresh
+              install just works on free tier.
+  Purpose: One-click diagnostic that tells a user exactly what's OK
+              and what isn't, with an obvious next step. New free
+              accounts no longer hit a paid-voice wall on first run.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+
+1.3.0 - 2026-05-23 (Phase 3: polish + distribution scaffolding)
+  What:    1) Pre-warm cache button: settings panel now has a button
+              that fetches every common single character (a-z, 0-9, a
+              few punctuation marks) for the currently selected voice
+              and saves it to disk. Shows a progress dialog with a
+              Cancel button.
+           2) build.py: reproducible Python build script that reads
+              version from manifest.ini and outputs
+              dist/elevenlabsTTS-<version>.nvda-addon, skipping junk
+              files (pyc, __pycache__, editor backups). Replaces the
+              ad-hoc PowerShell Compress-Archive command.
+           3) docs/en/readme.html: HTML version of the documentation,
+              wired into manifest.ini via docFileName. NVDA's
+              "View add-on help" menu now opens it directly.
+           4) Translation scaffolding: addonHandler.initTranslation()
+              wired into the settings module; locale/ta and locale/hi
+              .po placeholders shipped; locale/README.txt explains
+              how to extract / compile.
+           5) LICENSE (MIT) + STORE_SUBMISSION.md: paperwork required
+              for the NVDA Add-on Store PR workflow.
+  Why:     1) First touch of each letter still hit the network. For
+              users who type a lot, that's 26 unavoidable misses on
+              day one of a new voice. Pre-warm collapses them into a
+              single one-time job the user can kick off and walk
+              away from.
+           2/3/4/5) Distribution is currently a personal-tarball
+              affair. The Add-on Store requires a fixed file layout,
+              LICENSE, HTML help, and a translation hook. Adding the
+              scaffolding now keeps it cheap; doing it post-launch is
+              painful.
+  Purpose: One-click "burn the latency budget once, never again per
+              voice" cache warmup, an HTML help page NVDA actually
+              displays, and the boilerplate needed to submit upstream.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (docFileName, version bump)
+           docs/en/readme.html               (new)
+           build.py                          (new)
+           LICENSE                           (new)
+           STORE_SUBMISSION.md               (new)
+           locale/README.txt                 (new)
+           locale/ta/LC_MESSAGES/nvda.po     (new placeholder)
+           locale/hi/LC_MESSAGES/nvda.po     (new placeholder)
+
+  Deferred to 1.4.0:
+    #13  WebSocket streaming endpoint
+    #16  Per-app voice routing
+
+1.2.1 - 2026-05-23
+  What:    1) Removed the 0.4s sleep before the first reconnect after a
+              stale keep-alive connection. The first retry is now
+              instant; the 0.4 / 1.0 / 2.5s backoffs only kick in if a
+              *fresh* connection also fails (real network trouble).
+           2) Replaced the 31-language LANGUAGE_LIST with an
+              Indian-only list (English India, Hindi, Tamil, Bengali,
+              Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi,
+              Urdu). Non-officially-supported entries carry an
+              "(experimental)" label.
+           3) Added an explanatory note above the Language picker in
+              the settings panel.
+  Why:     1) After 1.2.0 the user reported audible latency between
+              utterances. The new retry backoff was sleeping every
+              time the cached HTTPS keep-alive went stale (~60s of
+              idle), which is exactly the pause they were hearing.
+           2) The product is targeted at Indian users; showing
+              Chinese / Arabic / Bulgarian / etc. was clutter.
+  Purpose: Idle-to-speech latency is back at "instant" levels even
+              after long pauses. The language picker now matches the
+              product's audience and sets expectations about which
+              languages will actually sound good.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+
+1.2.0 - 2026-05-23 (Phase 2: live catalogues + retries)
+  What:    Voice list now fetched live from /v1/voices on driver init
+           and on demand from the settings panel ("Refresh voice list"
+           button). Added a Model picker (Flash / Turbo / Multilingual)
+           and a Language picker that activates when the Multilingual
+           model is selected. Hardened the HTTP layer with retry+
+           exponential backoff for 5xx and 429 responses; honours
+           Retry-After when present.
+  Why:     ElevenLabs has changed which voices are available on which
+           tier (the original "Riya - Indian Female" no longer works
+           for free accounts, for example). Hardcoding the catalogue
+           guaranteed it would go stale. Different models are also a
+           real quality/latency knob users should control. Transient
+           network errors were silently dropping audio.
+  Purpose: The voice dropdown matches the user's actual library and
+           tier; cross-language users (Hindi, Tamil, ...) can pick the
+           multilingual model and a language code; brief network or
+           server hiccups are absorbed instead of becoming silence.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+
+  Notes:   WebSocket streaming endpoint (originally task #13) is
+           deferred to its own release because it needs a custom
+           pure-Python WebSocket client and is the largest single
+           change of the original 16-item list.
+
+1.1.1 - 2026-05-23
+  What:    Make the "Test API key" and "Clear cache" buttons report
+           their result through a modal dialog (in addition to the
+           inline status label). speak_test_phrase now logs every
+           step to the NVDA log so a silent failure is diagnosable.
+  Why:     The first 1.1.0 build only updated a small status label,
+           and the test phrase plays through a separate WavePlayer,
+           so the user couldn't tell whether the button had actually
+           done anything.
+  Purpose: Click a button -> get an unmistakable answer ("Played
+           1.8s of audio" or "API error 401: invalid_api_key"), plus
+           a paper trail in the NVDA log for support.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+
+1.1.0 - 2026-05-23
+  What:    Phase 1 polish pass. Persistent HTTPS connection, "Test"
+           button, quota display, clear-cache button, and LRU eviction
+           for the on-disk audio cache.
+  Why:     Network round-trip dominates perceived latency on every cache
+           miss. The settings panel previously gave no feedback after
+           saving the API key, and the cache could grow without bound.
+  Purpose: Snappier first-time speech on each new utterance, a settings
+           panel that proves the key works at the moment you paste it,
+           visible quota and cache size, and a bounded cache footprint.
+  Files:   synthDrivers/elevenlabs.py
+           globalPlugins/elevenlabsTTS/settings.py
+           manifest.ini (version bump)
+
+1.0.3 - 2026-05-23 (the "letter echo" pass)
+  What:    Cache short utterances (<= 8 chars) on disk; rework single
+           character handling to send "e." instead of "ee".
+  Why:     Each typed letter triggered a fresh ~500 ms ElevenLabs HTTP
+           round-trip, so rapid typing or letter-by-letter review
+           sounded cut off or silent. The phonetic expansion ("ay",
+           "bee", ...) was also not how a screen reader normally
+           announces a character.
+  Purpose: First press of each letter is still a network call, but
+           every subsequent press of the same letter plays from disk
+           in <50 ms. Letter names ("ee", "five") come out clearly.
+  Files:   synthDrivers/elevenlabs.py
+
+1.0.2 - 2026-05-23 (the "audioop" removal)
+  What:    Replaced the audioop module with pure-Python equivalents
+           (array-based volume scaling, linear-interpolation resample
+           for the pitch knob).
+  Why:     Python 3.13 removed the audioop module from stdlib, so the
+           driver failed to import under NVDA 2026.x.
+  Purpose: Add-on loads cleanly on NVDA 2026.1.x without depending on
+           a deprecated stdlib module or a third-party backport.
+  Files:   synthDrivers/elevenlabs.py
+
+1.0.1 - 2026-05-23 (the "flat layout" fix)
+  What:    Removed the addon/ wrapper directory; manifest.ini,
+           synthDrivers/ and globalPlugins/ now live at the package
+           root.
+  Why:     NVDA's bundle extractor expects synthDrivers/ at the root
+           of the .nvda-addon zip, not inside addon/. With the wrapper
+           the synth driver was extracted to a path NVDA never scanned.
+  Purpose: NVDA actually picks up the synth driver after install.
+  Files:   manifest.ini, all source dirs.
+
+1.0.0 - 2026-05-23 (initial release)
+  What:    First version. Pure-stdlib driver talking to the ElevenLabs
+           HTTP streaming endpoint, four NVDA settings ring entries
+           (rate, voice, volume, pitch), and a settings panel under
+           Preferences > Settings > ElevenLabs TTS for the API key
+           and defaults.
+  Why:     User needed an NVDA add-on that wraps ElevenLabs with the
+           full screen-reader UX (settings ring, settings panel,
+           multiple voices, API key entry).
+  Purpose: Functional ElevenLabs synthesizer inside NVDA without
+           shipping the official SDK (which has paths long enough to
+           hit Windows MAX_PATH during install).
+  Files:   manifest.ini, readme.txt, synthDrivers/elevenlabs.py,
+           globalPlugins/elevenlabsTTS/__init__.py,
+           globalPlugins/elevenlabsTTS/settings.py

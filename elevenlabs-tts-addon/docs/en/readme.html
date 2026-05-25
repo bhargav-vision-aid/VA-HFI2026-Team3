@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ElevenLabs TTS — NVDA Add-on</title>
+<style>
+  body { font-family: Segoe UI, sans-serif; max-width: 780px; margin: 1.5em auto; padding: 0 1em; line-height: 1.45; }
+  h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: .2em; }
+  code, kbd { background: #f3f3f3; padding: 1px 5px; border-radius: 3px; font-family: Consolas, monospace; }
+  table { border-collapse: collapse; margin: .8em 0; }
+  th, td { border: 1px solid #ccc; padding: .35em .7em; text-align: left; }
+  .note { background: #fff8d9; border-left: 4px solid #e0c200; padding: .6em 1em; }
+</style>
+</head>
+<body>
+
+<h1>ElevenLabs TTS</h1>
+
+<p>An NVDA add-on that uses the <a href="https://elevenlabs.io">ElevenLabs</a>
+streaming AI text-to-speech service. Tuned for Indian users — voices and
+languages relevant to the Indian subcontinent are surfaced first.</p>
+
+<h2>First-time setup</h2>
+
+<ol>
+  <li>Install the <code>.nvda-addon</code> file. Restart NVDA when prompted.</li>
+  <li>Get a free key from <a href="https://elevenlabs.io">elevenlabs.io</a>.</li>
+  <li>Open <kbd>NVDA</kbd>+<kbd>N</kbd> → <strong>Preferences</strong> → <strong>Settings</strong> → <strong>ElevenLabs TTS</strong>.</li>
+  <li>Paste your API key. Click <strong>Test API key</strong> to verify.</li>
+  <li>Click OK. Then under <strong>Preferences</strong> → <strong>Settings</strong> → <strong>Speech</strong>, pick "ElevenLabs Streaming AI" as the synthesizer.</li>
+</ol>
+
+<h2>What the settings panel controls</h2>
+
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr><td>API key</td><td>Required. Stored in NVDA config.</td></tr>
+  <tr><td>Test API key</td><td>Calls the API right now and plays a short phrase. Confirms the key works.</td></tr>
+  <tr><td>Default voice</td><td>Comes from your live ElevenLabs library. Use <strong>Refresh voice list</strong> to reload it.</td></tr>
+  <tr><td>Model</td><td>Flash v2.5 (fastest), Turbo v2.5 (balanced, default), Multilingual v2 (best quality, supports non-English).</td></tr>
+  <tr><td>Translation language</td><td>Target language for the NVDA+Shift+T gesture. Indian languages only: Tamil, Hindi, Telugu, Marathi, Bengali, Kannada, Malayalam, Gujarati, Punjabi, Urdu.</td></tr>
+  <tr><td>Default rate / volume / pitch</td><td>Starting values for the on-the-fly settings ring.</td></tr>
+  <tr><td>Pre-warm cache</td><td>Fetches every common single character for the current voice and saves it to disk. Eliminates first-time latency for letter-by-letter reading.</td></tr>
+  <tr><td>Clear cache</td><td>Deletes the on-disk audio cache.</td></tr>
+</table>
+
+<h2>Live controls while ElevenLabs is the active synthesizer</h2>
+
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>NVDA</kbd>+<kbd>Ctrl</kbd>+<kbd>Right</kbd>/<kbd>Left</kbd></td><td>Cycle through rate / voice / volume / pitch.</td></tr>
+  <tr><td><kbd>NVDA</kbd>+<kbd>Ctrl</kbd>+<kbd>Up</kbd>/<kbd>Down</kbd></td><td>Adjust the current setting (or switch voice).</td></tr>
+  <tr><td><kbd>NVDA</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td><td>Translate the currently selected text into the configured Indian language and speak it. Rebindable under NVDA Menu > Preferences > Input gestures > ElevenLabs TTS.</td></tr>
+</table>
+
+<h2>Translation (1.4.0+)</h2>
+
+<p>Select text in any app — a paragraph in your browser, a sentence in
+Notepad, a row in a chat window — then press <kbd>NVDA</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>.
+The selection is sent to Google's free public translation endpoint and
+the result is spoken aloud in your configured Indian language. The
+target language is whatever you picked under <strong>Translation
+language</strong> in the settings panel.</p>
+
+<p>Translation uses the <code>eleven_multilingual_v2</code> model
+regardless of your saved Model setting, so Indian languages are
+pronounced correctly even if you normally use Turbo for English.</p>
+
+<p>No translation API key is required — Google's free endpoint is used.
+If translation stops working it usually means Google has rate-limited
+your IP for the day; wait a few hours and try again.</p>
+
+<h2>On-disk audio cache</h2>
+
+<p>Short utterances (≤ 8 characters) are saved as raw PCM at
+<code>%APPDATA%\nvda\elevenlabsTTS_cache\</code>. Cached audio plays in
+under 50 ms instead of the ~500 ms network round-trip. The cache is
+keyed by <em>(voice, output format, text)</em> — switching voice triggers
+a fresh recording for that voice. Cache is capped at 100 MB and evicts
+least-recently-used files.</p>
+
+<h2>Troubleshooting</h2>
+
+<table>
+  <tr><th>Symptom</th><th>Where to look</th></tr>
+  <tr><td>No audio at all</td><td>Check API key in settings; click <strong>Test API key</strong>; check NVDA log for <code>ElevenLabs:</code> lines.</td></tr>
+  <tr><td>"free tier not available for this voice"</td><td>Click <strong>Refresh voice list</strong> — your tier may have changed which voices are available.</td></tr>
+  <tr><td>Lag after long idle</td><td>Should not happen in 1.2.1+. If it does, log it (Tools → View log) and report the line.</td></tr>
+  <tr><td>Indian-language text sounds bad</td><td>Set Model to <strong>Multilingual v2</strong>. Only Hindi and Tamil are officially supported; other languages are experimental.</td></tr>
+</table>
+
+<h2>License</h2>
+
+<p>See the <code>LICENSE</code> file at the add-on root.</p>
+
+</body>
+</html>
